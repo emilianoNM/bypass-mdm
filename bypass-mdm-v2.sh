@@ -112,65 +112,101 @@ find_available_uid() {
 
 # Function to detect system volumes with multiple fallback strategies
 detect_volumes() {
-	local system_vol=""
-	local data_vol=""
+    local system_vol=""
+    local data_vol=""
 
-	info "Detecting system volumes..." >&2
+    info "Detecting system volumes..." >&2
 
-	# Strategy 1: Look for common macOS APFS volume patterns
-	# List all volumes and look for system volume (ends with or contains common names)
-	for vol in /Volumes/*; do
-		if [ -d "$vol" ]; then
-			vol_name=$(basename "$vol")
+    #
+    # Detect system volume
+    #
+    for vol in /Volumes/*; do
+        [ -d "$vol" ] || continue
 
-			# Check if this looks like a system volume (not Data, not recovery)
-			if [[ ! "$vol_name" =~ "Datos"$ ]] && [[ ! "$vol_name" =~ "Recovery" ]] && [ -d "$vol/System" ]; then
-				system_vol="$vol_name"
-				info "Found system volume: $system_vol" >&2
-				break
-			fi
-		fi
-	done
+        vol_name="$(basename "$vol")"
 
-	# Strategy 2: If no system volume found, try looking for any volume with /System directory
-	if [ -z "$system_vol" ]; then
-		for vol in /Volumes/*; do
-			if [ -d "$vol/System" ]; then
-				system_vol=$(basename "$vol")
-				warn "Using volume with /System directory: $system_vol" >&2
-				break
-			fi
-		done
-	fi
+        # Ignore Recovery
+        [ "$vol_name" = "macOS Base System" ] && continue
 
-	# Strategy 3: Check for Data volume
-	if [ -d "/Volumes/Data" ]; then
-		data_vol="Data"
-		info "Found data volume: $data_vol" >&2
-	elif [ -n "$system_vol" ] && [ -d "/Volumes/$system_vol - Datos" ]; then
-		data_vol="$system_vol - Datos"
-		info "Found data volume: $data_vol" >&2
-	else
-		# Look for any volume ending with "Data"
-		for vol in /Volumes/*Datos; do
-			if [ -d "$vol" ]; then
-				data_vol=$(basename "$vol")
-				warn "Found data volume: $data_vol" >&2
-				break
-			fi
-		done
-	fi
+        if [ -d "$vol/System/Library/CoreServices" ]; then
+            system_vol="$vol_name"
+            info "Found system volume: $system_vol" >&2
+            break
+        fi
+    done
 
-	# Validate findings
-	if [ -z "$system_vol" ]; then
-		error_exit "Could not detect system volume. Please ensure you're running this in Recovery mode with a macOS installation present."
-	fi
+    #
+    # Detect APFS Data volume by role
+    #
+    for vol in /Volumes/*; do
+        [ -d "$vol" ] || continue
 
-	if [ -z "$data_vol" ]; then
-		error_exit "Could not detect data volume. Please ensure you're running this in Recovery mode with a macOS installation present."
-	fi
+        vol_name="$(basename "$vol")"
 
-	echo "$system_vol|$data_vol"
+        [ "$vol_name" = "macOS Base System" ] && continue
+        [ "$vol_name" = "$system_vol" ] && continue
+
+        role="$(diskutil info "$vol" 2>/dev/null |
+            awk -F: '/APFS Volume Role/ {
+                gsub(/^[ \t]+|[ \t]+$/, "", $2);
+                print $2
+            }')"
+
+        if echo "$role" | grep -qi "Data"; then
+            data_vol="$vol_name"
+            info "Found APFS Data volume: $data_vol" >&2
+            break
+        fi
+    done
+
+    #
+    # Fallback for localized names
+    #
+    if [ -z "$data_vol" ]; then
+        for vol in /Volumes/*; do
+            [ -d "$vol" ] || continue
+
+            vol_name="$(basename "$vol")"
+
+            case "$vol_name" in
+                "Data"|"Datos"|*" - Data"|*" - Datos")
+                    data_vol="$vol_name"
+                    warn "Found data volume by name: $data_vol" >&2
+                    break
+                    ;;
+            esac
+        done
+    fi
+
+    #
+    # Second fallback: filesystem structure
+    #
+    if [ -z "$data_vol" ]; then
+        for vol in /Volumes/*; do
+            [ -d "$vol" ] || continue
+
+            vol_name="$(basename "$vol")"
+
+            if [ "$vol_name" != "$system_vol" ] &&
+               [ "$vol_name" != "macOS Base System" ] &&
+               [ -d "$vol/private/var/db" ]; then
+
+                data_vol="$vol_name"
+                warn "Found probable Data volume: $data_vol" >&2
+                break
+            fi
+        done
+    fi
+
+    if [ -z "$system_vol" ]; then
+        error_exit "Could not detect system volume."
+    fi
+
+    if [ -z "$data_vol" ]; then
+        error_exit "Could not detect data volume."
+    fi
+
+    echo "$system_vol|$data_vol"
 }
 
 # Detect volumes at startup
