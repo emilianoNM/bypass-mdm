@@ -124,7 +124,7 @@ detect_volumes() {
 			vol_name=$(basename "$vol")
 
 			# Check if this looks like a system volume (not Data, not recovery)
-			if [[ ! "$vol_name" =~ "Data"$ ]] && [[ ! "$vol_name" =~ "Recovery" ]] && [ -d "$vol/System" ]; then
+			if [[ ! "$vol_name" =~ "Datos"$ ]] && [[ ! "$vol_name" =~ "Recovery" ]] && [ -d "$vol/System" ]; then
 				system_vol="$vol_name"
 				info "Found system volume: $system_vol" >&2
 				break
