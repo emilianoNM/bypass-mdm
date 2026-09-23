@@ -147,12 +147,12 @@ detect_volumes() {
 	if [ -d "/Volumes/Data" ]; then
 		data_vol="Data"
 		info "Found data volume: $data_vol" >&2
-	elif [ -n "$system_vol" ] && [ -d "/Volumes/$system_vol - Data" ]; then
-		data_vol="$system_vol - Data"
+	elif [ -n "$system_vol" ] && [ -d "/Volumes/$system_vol - Datos" ]; then
+		data_vol="$system_vol - Datos"
 		info "Found data volume: $data_vol" >&2
 	else
 		# Look for any volume ending with "Data"
-		for vol in /Volumes/*Data; do
+		for vol in /Volumes/*Datos; do
 			if [ -d "$vol" ]; then
 				data_vol=$(basename "$vol")
 				warn "Found data volume: $data_vol" >&2
